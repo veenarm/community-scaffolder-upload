@@ -1,17 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FieldExtensionComponentProps } from '@backstage/plugin-scaffolder-react';
 import FormControl from '@material-ui/core/FormControl';
 import FormHelperText from '@material-ui/core/FormHelperText';
 import Input from '@material-ui/core/Input';
 import InputLabel from '@material-ui/core/InputLabel';
-
-const toBase64 = (file: File): Promise<string | ArrayBuffer | null> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
-  });
+import { useApi, fetchApiRef, identityApiRef, errorApiRef } from '@backstage/core-plugin-api';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 export const FileUploadExtension = ({
   onChange,
@@ -19,13 +13,43 @@ export const FileUploadExtension = ({
   required,
   formData,
 }: FieldExtensionComponentProps<string>) => {
+  const [loading, setLoading] = useState(false);
+  const fetchApi = useApi(fetchApiRef);
+  const identityApi = useApi(identityApiRef);
+  const errorApi = useApi(errorApiRef);
+
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const { files } = event.target;
     if (files && files.length > 0) {
-      const fileContent = await toBase64(files[0]);
-      onChange(fileContent as string);
+      setLoading(true);
+      const file = files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const { token } = await identityApi.getCredentials();
+
+      const response = await fetchApi.fetch(
+        '/api/file-upload/files/upload',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        },
+      );
+
+      if (!response.ok) {
+        errorApi.post(new Error(`Failed to upload file: ${response.statusText}`));
+        setLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      onChange(data.path);
+      setLoading(false);
     }
   };
 
@@ -36,9 +60,10 @@ export const FileUploadExtension = ({
       error={rawErrors?.length > 0 && !formData}
     >
       <InputLabel htmlFor="file-upload">Upload File</InputLabel>
-      <Input id="file-upload" type="file" onChange={handleFileChange} />
+      <Input id="file-upload" type="file" onChange={handleFileChange} disabled={loading} />
+      {loading && <LinearProgress />}
       <FormHelperText>
-        The file will be uploaded and encoded as a base64 string.
+        The file will be uploaded to a temporary location.
       </FormHelperText>
     </FormControl>
   );
