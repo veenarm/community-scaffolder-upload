@@ -23,6 +23,11 @@ spec:
           ui:autofocus: true
           ui:options:
             rows: 5
+        logo:
+          title: Logo
+          type: string
+          description: A logo for the component
+          ui:field: FileUpload
     - title: Choose a location
       required:
         - repoUrl
